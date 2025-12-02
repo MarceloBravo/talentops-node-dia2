@@ -14,6 +14,10 @@ app.use(compression());      // Compresión
 app.use(express.json({ limit: '10mb' }));        // Parsear JSON
 app.use(express.urlencoded({ extended: true })); // Parsear formularios
 
+// Middleware de i18n
+const i18nMiddleware = require('./middlewares/i18n');
+app.use(i18nMiddleware);
+
 
 
 // Middleware personalizado: Logger detallado
@@ -53,10 +57,10 @@ let productos = [
 // Middleware personalizado: Validación de autenticación (simple)
 function validarAuth(req, res, next) {
   const authHeader = req.headers.authorization;
-  
+
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({
-      error: 'Token de autenticación requerido',
+      error: req.t('auth.tokenRequired'),
       timestamp: res.locals.timestamp
     });
   }
@@ -66,7 +70,7 @@ function validarAuth(req, res, next) {
   // Simular validación de token (en producción usar JWT)
   if (token !== 'mi-token-secreto') {
     return res.status(401).json({
-      error: 'Token inválido',
+      error: req.t('auth.tokenInvalid'),
       timestamp: res.locals.timestamp
     });
   }
@@ -75,13 +79,12 @@ function validarAuth(req, res, next) {
   req.usuario = { id: 1, nombre: 'Admin', role: 'admin' };
   next();
 }
-
 // Middleware personalizado: Validación de permisos
 function validarPermisos(permisoRequerido) {
   return (req, res, next) => {
     if (!req.usuario) {
       return res.status(401).json({
-        error: 'Usuario no autenticado',
+        error: req.t('auth.notAuthenticated'),
         timestamp: res.locals.timestamp
       });
     }
@@ -95,7 +98,7 @@ function validarPermisos(permisoRequerido) {
 
     if (!permisos.includes(permisoRequerido)) {
       return res.status(403).json({
-        error: 'Permisos insuficientes',
+        error: req.t('auth.insufficientPermissions'),
         timestamp: res.locals.timestamp
       });
     }
@@ -107,8 +110,8 @@ function validarPermisos(permisoRequerido) {
 const createRateLimiter = require('./middlewares/rate-limit');
 const { cacheMiddleware, clearCache } = require('./middlewares/cache');
 
-const loginLimiter = createRateLimiter(15 * 60 * 1000, 5, 'Demasiados intentos de inicio de sesión desde esta IP, inténtelo de nuevo después de 15 minutos');
-const apiLimiter = createRateLimiter(15 * 60 * 1000, 100);
+const loginLimiter = createRateLimiter(15 * 60 * 1000, 5, (req, res) => req.t('rateLimit.login'));
+const apiLimiter = createRateLimiter(15 * 60 * 1000, 100, (req, res) => req.t('rateLimit.default'));
 
 // Middleware personalizado: Validación de datos
 function validarCamposRequeridos(campos) {
@@ -123,7 +126,7 @@ function validarCamposRequeridos(campos) {
 
     if (faltantes.length > 0) {
       return res.status(400).json({
-        error: 'Campos requeridos faltantes',
+        error: req.t('validation.missingFields'),
         camposFaltantes: faltantes,
         timestamp: res.locals.timestamp
       });
@@ -175,7 +178,7 @@ app.post('/auth/login', loginLimiter, validarCamposRequeridos(['email', 'passwor
     });
   } else {
     res.status(401).json({
-      error: 'Credenciales inválidas',
+      error: req.t('auth.invalidCredentials'),
       timestamp: res.locals.timestamp
     });
   }
@@ -205,7 +208,7 @@ app.post('/api/usuarios', apiLimiter, validarAuth, validarPermisos('escribir'),
   clearCache('/api/usuarios');
 
   res.status(201).json({
-    mensaje: 'Usuario creado exitosamente',
+    mensaje: req.t('user.created'),
     usuario: nuevoUsuario,
     timestamp: res.locals.timestamp
   });
@@ -253,7 +256,7 @@ app.post('/api/productos', apiLimiter, validarAuth, validarPermisos('escribir'),
   clearCache('/api/productos');
 
   res.status(201).json({
-    mensaje: 'Producto creado exitosamente',
+    mensaje: req.t('product.created'),
     producto: nuevoProducto,
     timestamp: res.locals.timestamp
   });
@@ -266,14 +269,14 @@ app.use((error, req, res, next) => {
   // Errores de JSON inválido
   if (error.type === 'entity.parse.failed') {
     return res.status(400).json({
-      error: 'JSON inválido en el body de la petición',
+      error: req.t('error.invalidJson'),
       timestamp: res.locals.timestamp
     });
   }
 
   // Error genérico
   res.status(500).json({
-    error: 'Error interno del servidor',
+    error: req.t('error.internal'),
     mensaje: process.env.NODE_ENV === 'development' ? error.message : 'Algo salió mal',
     timestamp: res.locals.timestamp
   });
@@ -282,7 +285,7 @@ app.use((error, req, res, next) => {
 // Middleware 404
 app.use((req, res) => {
   res.status(404).json({
-    error: 'Ruta no encontrada',
+    error: req.t('error.notFound'),
     metodo: req.method,
     ruta: req.url,
     timestamp: res.locals.timestamp,
