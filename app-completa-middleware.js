@@ -1,9 +1,20 @@
+// app-completa-middleware.js
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const compression = require('compression');
+
+// Crear aplicación
+const app = express();
+
 // Middleware de terceros
 app.use(helmet());           // Seguridad
 app.use(cors());             // CORS
 app.use(compression());      // Compresión
 app.use(express.json({ limit: '10mb' }));        // Parsear JSON
 app.use(express.urlencoded({ extended: true })); // Parsear formularios
+
+
 
 // Middleware personalizado: Logger detallado
 app.use((req, res, next) => {
@@ -93,6 +104,11 @@ function validarPermisos(permisoRequerido) {
   };
 }
 
+const createRateLimiter = require('./middlewares/rate-limit');
+
+const loginLimiter = createRateLimiter(15 * 60 * 1000, 5, 'Demasiados intentos de inicio de sesión desde esta IP, inténtelo de nuevo después de 15 minutos');
+const apiLimiter = createRateLimiter(15 * 60 * 1000, 100);
+
 // Middleware personalizado: Validación de datos
 function validarCamposRequeridos(campos) {
   return (req, res, next) => {
@@ -146,7 +162,7 @@ app.get('/health', (req, res) => {
 });
 
 // Simulación de login (retorna token fijo)
-app.post('/auth/login', validarCamposRequeridos(['email', 'password']), (req, res) => {
+app.post('/auth/login', loginLimiter, validarCamposRequeridos(['email', 'password']), (req, res) => {
   const { email, password } = req.body;
 
   // Simular validación (en producción consultar BD)
@@ -165,7 +181,7 @@ app.post('/auth/login', validarCamposRequeridos(['email', 'password']), (req, re
 });
 
 // Rutas protegidas - Usuarios
-app.get('/api/usuarios', validarAuth, (req, res) => {
+app.get('/api/usuarios', apiLimiter, validarAuth, (req, res) => {
   res.json({
     usuarios,
     total: usuarios.length,
@@ -173,7 +189,7 @@ app.get('/api/usuarios', validarAuth, (req, res) => {
   });
 });
 
-app.post('/api/usuarios', validarAuth, validarPermisos('escribir'),
+app.post('/api/usuarios', apiLimiter, validarAuth, validarPermisos('escribir'),
   validarCamposRequeridos(['nombre', 'email']), (req, res) => {
 
   const nuevoUsuario = {
@@ -194,7 +210,7 @@ app.post('/api/usuarios', validarAuth, validarPermisos('escribir'),
 });
 
 // Rutas protegidas - Productos
-app.get('/api/productos', validarAuth, (req, res) => {
+app.get('/api/productos', apiLimiter, validarAuth, (req, res) => {
   const { categoria, precio_min, precio_max } = req.query;
   let resultados = [...productos];
 
@@ -219,7 +235,7 @@ app.get('/api/productos', validarAuth, (req, res) => {
   });
 });
 
-app.post('/api/productos', validarAuth, validarPermisos('escribir'),
+app.post('/api/productos', apiLimiter, validarAuth, validarPermisos('escribir'),
   validarCamposRequeridos(['nombre', 'precio', 'categoria']), (req, res) => {
 
   const nuevoProducto = {
