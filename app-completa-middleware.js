@@ -109,6 +109,7 @@ function validarPermisos(permisoRequerido) {
 
 const createRateLimiter = require('./middlewares/rate-limit');
 const { cacheMiddleware, clearCache } = require('./middlewares/cache');
+const { validate, validateId, usuarioSchema, usuarioUpdateSchema } = require('./middlewares/validation');
 
 const loginLimiter = createRateLimiter(15 * 60 * 1000, 5, (req, res) => req.t('rateLimit.login'));
 const apiLimiter = createRateLimiter(15 * 60 * 1000, 100, (req, res) => req.t('rateLimit.default'));
@@ -194,7 +195,7 @@ app.get('/api/usuarios', apiLimiter, cacheMiddleware, validarAuth, (req, res) =>
 });
 
 app.post('/api/usuarios', apiLimiter, validarAuth, validarPermisos('escribir'),
-  validarCamposRequeridos(['nombre', 'email']), (req, res) => {
+  validate(usuarioSchema), (req, res) => {
 
   const nuevoUsuario = {
     id: usuarios.length + 1,
@@ -241,7 +242,24 @@ app.get('/api/productos', apiLimiter, cacheMiddleware, validarAuth, (req, res) =
 });
 
 app.post('/api/productos', apiLimiter, validarAuth, validarPermisos('escribir'),
-  validarCamposRequeridos(['nombre', 'precio', 'categoria']), (req, res) => {
+  validate(require('joi').object({
+    nombre: require('joi').string().min(3).max(100).required().messages({
+      'string.min': 'El nombre debe tener al menos 3 caracteres',
+      'any.required': 'El nombre es obligatorio'
+    }),
+    precio: require('joi').number().positive().required().messages({
+      'number.positive': 'El precio debe ser mayor a 0',
+      'any.required': 'El precio es obligatorio'
+    }),
+    categoria: require('joi').string().min(3).required().messages({
+      'string.min': 'La categoría debe tener al menos 3 caracteres',
+      'any.required': 'La categoría es obligatoria'
+    }),
+    stock: require('joi').number().integer().min(0).default(0).messages({
+      'number.base': 'El stock debe ser un número',
+      'number.min': 'El stock no puede ser negativo'
+    })
+  })), (req, res) => {
 
   const nuevoProducto = {
     id: productos.length + 1,
