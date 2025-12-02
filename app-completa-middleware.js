@@ -53,7 +53,7 @@ let productos = [
 // Middleware personalizado: Validación de autenticación (simple)
 function validarAuth(req, res, next) {
   const authHeader = req.headers.authorization;
-
+  
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({
       error: 'Token de autenticación requerido',
@@ -105,6 +105,7 @@ function validarPermisos(permisoRequerido) {
 }
 
 const createRateLimiter = require('./middlewares/rate-limit');
+const { cacheMiddleware, clearCache } = require('./middlewares/cache');
 
 const loginLimiter = createRateLimiter(15 * 60 * 1000, 5, 'Demasiados intentos de inicio de sesión desde esta IP, inténtelo de nuevo después de 15 minutos');
 const apiLimiter = createRateLimiter(15 * 60 * 1000, 100);
@@ -181,7 +182,7 @@ app.post('/auth/login', loginLimiter, validarCamposRequeridos(['email', 'passwor
 });
 
 // Rutas protegidas - Usuarios
-app.get('/api/usuarios', apiLimiter, validarAuth, (req, res) => {
+app.get('/api/usuarios', apiLimiter, cacheMiddleware, validarAuth, (req, res) => {
   res.json({
     usuarios,
     total: usuarios.length,
@@ -201,6 +202,7 @@ app.post('/api/usuarios', apiLimiter, validarAuth, validarPermisos('escribir'),
   };
 
   usuarios.push(nuevoUsuario);
+  clearCache('/api/usuarios');
 
   res.status(201).json({
     mensaje: 'Usuario creado exitosamente',
@@ -210,7 +212,7 @@ app.post('/api/usuarios', apiLimiter, validarAuth, validarPermisos('escribir'),
 });
 
 // Rutas protegidas - Productos
-app.get('/api/productos', apiLimiter, validarAuth, (req, res) => {
+app.get('/api/productos', apiLimiter, cacheMiddleware, validarAuth, (req, res) => {
   const { categoria, precio_min, precio_max } = req.query;
   let resultados = [...productos];
 
@@ -248,6 +250,7 @@ app.post('/api/productos', apiLimiter, validarAuth, validarPermisos('escribir'),
   };
 
   productos.push(nuevoProducto);
+  clearCache('/api/productos');
 
   res.status(201).json({
     mensaje: 'Producto creado exitosamente',
